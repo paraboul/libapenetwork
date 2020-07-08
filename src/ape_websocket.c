@@ -36,6 +36,13 @@ static uint32_t ape_random32(ape_global *ape)
     return ret;
 }
 
+static uint64_t ntohl64(uint64_t n)
+{
+    uint64_t a = ntohl(n & 0xffffffffllu);
+    uint64_t b = ntohl(n >> 32);
+    return (a << 32) | b;
+}
+
 void ape_ws_init(websocket_state *state, int isclient)
 {
     state->socket     = NULL;
@@ -50,6 +57,7 @@ void ape_ws_init(websocket_state *state, int isclient)
     state->frame_payload.extended_length = 0;
     state->frame_pos                     = 0;
     state->data_inkey                    = 0;
+    state->prevstate                     = 0;
 }
 
 char *ape_ws_compute_key(const char *key, unsigned int key_len)
@@ -184,6 +192,7 @@ static void ape_ws_reset_frame_state(websocket_state *websocket)
     websocket->frame_pos                     = 0;
     websocket->frame_payload.extended_length = 0;
     websocket->key.pos                       = 0;
+    websocket->prevstate                     = websocket->frame_payload.start;
 
     if (websocket->data) {
         free(websocket->data);
@@ -195,8 +204,29 @@ static int ape_ws_process_end_message(websocket_state *websocket)
 {
     unsigned char opcode = websocket->frame_payload.start & 0x0F;
     int retval           = 1;
+    int isBinary         = 0;
 
     switch (opcode) {
+        case 0x2: /* Binary frame */
+        case 0x0: /* Continuation frame */
+            isBinary = opcode == 0x2 || (websocket->prevstate & 0x0F) == 0x2;
+        case 0x1: /* ASCII frame */
+        {
+            ws_frame_state fs;
+            int isfin = (websocket->frame_payload.start & 0xF0) == 0x80;
+            
+            if (isfin) {
+                fs = WS_FRAME_FINISH;
+            } else if (opcode == 0) {
+                fs = WS_FRAME_CONTINUE;
+            } else {
+                fs = WS_FRAME_START;
+            }
+
+            websocket->on_frame(websocket, websocket->data,
+                                websocket->data_inkey, isBinary, fs);
+            break;
+        }
         case 0x8: /* Close frame */
             ape_ws_close(websocket);
             retval = 0; /* Don't process anything more */
@@ -205,14 +235,6 @@ static int ape_ws_process_end_message(websocket_state *websocket)
             ape_ws_pong(websocket);
             break;
         case 0xA: /* Pong frame */
-            break;
-        case 0x1: /* ASCII frame */
-            websocket->on_frame(websocket, websocket->data,
-                                websocket->data_inkey, 0);
-            break;
-        case 0x2: /* Binary frame */
-            websocket->on_frame(websocket, websocket->data,
-                                websocket->data_inkey, 1);
             break;
         default:
             APE_ERROR("libapenetwork", "[Websocket] Got an unknown frame with opcode %.2x\n", opcode);
@@ -302,7 +324,6 @@ void ape_ws_process_frame(websocket_state *websocket, const char *buf,
 
                     websocket->frame_payload.extended_length
                         = ntohs(websocket->frame_payload.short_length);
-
                     websocket->step
                         = websocket->mask ? WS_STEP_KEY : WS_STEP_DATA;
                 }
@@ -314,8 +335,7 @@ void ape_ws_process_frame(websocket_state *websocket, const char *buf,
 
                 if (websocket->frame_pos == 9) {
 
-                    websocket->frame_payload.extended_length
-                        = ntohl(websocket->frame_payload.extended_length >> 32);
+                    websocket->frame_payload.extended_length = ntohl64(websocket->frame_payload.extended_length);
 
                     websocket->step
                         = websocket->mask ? WS_STEP_KEY : WS_STEP_DATA;

@@ -20,12 +20,18 @@ typedef enum {
     WS_STEP_END
 } ws_payload_step;
 
+typedef enum {
+    WS_FRAME_START,
+    WS_FRAME_CONTINUE,
+    WS_FRAME_FINISH
+} ws_frame_state;
+
 typedef struct _websocket_state {
     ape_socket *socket;
 
     unsigned char *data;
-    void (*on_frame)(struct _websocket_state *, const unsigned char *, ssize_t,
-                     int binary);
+    void (*on_frame)(struct _websocket_state *state, const unsigned char *data, ssize_t len,
+                     int binary, ws_frame_state framestate);
 
     unsigned short int error;
     // ws_version version;
@@ -53,6 +59,7 @@ typedef struct _websocket_state {
     int mask;
     int close_sent : 4;
     int is_client : 4;
+    unsigned char prevstate;
 } websocket_state;
 
 #ifdef __cplusplus
