@@ -7,9 +7,8 @@
 #ifndef __APE_SSL_H
 #define __APE_SSL_H
 
-
-
-#include <openssl/ssl.h>
+typedef struct ssl_ctx_st SSL_CTX;
+typedef struct ssl_st SSL;
 
 #ifdef __cplusplus
 extern "C" {

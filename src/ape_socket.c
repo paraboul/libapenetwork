@@ -8,15 +8,19 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "ape_dns.h"
 #include "ape_ssl.h"
 #include "ape_timers_next.h"
 #ifndef _WIN32
-#include <openssl/err.h>
 #include <sys/time.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#ifndef APE_DISABLE_SSL
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#endif
 #else
 #include <io.h>
 #include <malloc.h>
@@ -168,6 +172,7 @@ ape_socket *APE_socket_new(uint8_t pt, int from, ape_global *ape) {
 
     ret->SSL.issecure = (pt == APE_SOCKET_PT_SSL);
     ret->SSL.need_write = 0;
+    ret->remote_host = NULL;
 
     buffer_init(&ret->data_in);
     ape_init_job_list(&ret->jobs, 2);
@@ -183,6 +188,10 @@ int APE_socket_setTimeout(ape_socket *socket, sockopt_t secs) {
     if (socket->states.proto == APE_SOCKET_PT_UDP) {
         return 0;
     }
+
+#ifdef __WIN32
+    return 0;
+#else
 
 #ifdef TCP_KEEPALIVE /* BSD, Darwin */
 #define KEEPALIVE_OPT TCP_KEEPALIVE
@@ -251,6 +260,7 @@ int APE_socket_setTimeout(ape_socket *socket, sockopt_t secs) {
 #endif
 
     return 1;
+#endif
 }
 
 int APE_socket_listen(ape_socket *socket, uint16_t port, const char *local_ip,
@@ -380,9 +390,8 @@ retry_connect:
 
     if (connect(socket->s.fd, punaddr, sizeof(struct sockaddr)) == -1 &&
         (SOCKERRNO != EWOULDBLOCK && SOCKERRNO != EINPROGRESS)) {
-        APE_ERROR("libapenetwork",
-                  "[Socket] connect() error(%d) on %d : %s (retry : %d)\n",
-                  SOCKERRNO, socket->s.fd, strerror(SOCKERRNO), ntry);
+        printf("[Socket] connect() error(%d) on %d : %s (retry : %d)\n",
+               SOCKERRNO, socket->s.fd, strerror(SOCKERRNO), ntry);
 
         switch (SOCKERRNO) {
             case EADDRNOTAVAIL:
@@ -416,7 +425,8 @@ retry_connect:
 }
 
 int APE_socket_connect(ape_socket *socket, uint16_t port,
-                       const char *remote_ip_host, uint16_t localport) {
+                       const char *remote_ip_host, uint16_t localport,
+                       const char *hostname_sni) {
     if (!socket) {
         return -1;
     }
@@ -438,6 +448,15 @@ int APE_socket_connect(ape_socket *socket, uint16_t port,
         ape_gethostbyname(remote_ip_host, ape_socket_connect_ready_to_connect,
                           socket, socket->ape);
 
+    if (socket->states.state == APE_SOCKET_ST_OFFLINE) {
+        return -1;
+    }
+
+    if (hostname_sni) {
+        socket->remote_host = strdup(hostname_sni);
+    } else if (socket->dns_state != NULL) {
+        socket->remote_host = strdup(remote_ip_host);
+    }
 #else
     return ape_socket_connect_ready_to_connect(remote_ip_host, socket, 0);
 #endif
@@ -526,8 +545,9 @@ void APE_socket_remove_callbacks(ape_socket *socket) {
 static int ape_socket_close(ape_socket *socket) {
     ape_global *ape;
 
-    if (socket == NULL || socket->states.state == APE_SOCKET_ST_OFFLINE)
+    if (socket == NULL || socket->states.state == APE_SOCKET_ST_OFFLINE) {
         return 0;
+    }
 
     ape = socket->ape;
     ape_dns_invalidate(socket->dns_state);
@@ -587,6 +607,10 @@ static int ape_socket_free(void *arg) {
 
     if (socket->delay_timer) {
         APE_timer_destroy(socket->ape, socket->delay_timer);
+    }
+
+    if (socket->remote_host) {
+        free(socket->remote_host);
     }
 
     free(socket);
@@ -733,6 +757,7 @@ int APE_socket_write(ape_socket *socket, void *data, size_t len,
     }
 
     if (APE_SOCKET_ISSECURE(socket)) {
+#ifndef APE_DISABLE_SSL
         int w;
         // APE_DEBUG("libapenetwork", "[Socket] Want write on a secure
         // connection\n");
@@ -773,7 +798,7 @@ int APE_socket_write(ape_socket *socket, void *data, size_t len,
                     break;
             }
         }
-
+#endif
     } else {
         if (APE_SOCKET_IS_LZ4(socket, tx)) {
             int number_of_blocks =
@@ -931,6 +956,7 @@ int ape_socket_do_jobs(ape_socket *socket) {
                     (ape_socket_packet_t *)plist->head;
 
                 if (APE_SOCKET_ISSECURE(socket)) {
+#ifndef APE_DISABLE_SSL
                     ERR_clear_error();
 
                     while (packet != NULL && packet->pool.ptr.data != NULL) {
@@ -959,6 +985,7 @@ int ape_socket_do_jobs(ape_socket *socket) {
                         packet = (ape_socket_packet_t *)ape_pool_head_to_queue(
                             plist);
                     }
+#endif
                 } else {
                 chunk:
                     for (i = 0; packet != NULL && i < max_chunks; i++) {
@@ -1142,6 +1169,11 @@ int ape_socket_connected(void *arg) {
     if (APE_SOCKET_ISSECURE(socket)) {
         socket->SSL.ssl =
             ape_ssl_init_con(socket->ape->ssl_global_ctx, socket->s.fd, 0);
+
+        // Enable TLS SNI
+        if (socket->remote_host) {
+            SSL_set_tlsext_host_name(socket->SSL.ssl->con, socket->remote_host);
+        }
     }
 
     if (socket->callbacks.on_connected != NULL) {
@@ -1428,6 +1460,7 @@ int ape_socket_read(ape_socket *socket) {
         buffer_prepare(&socket->data_in, 2048);
 
         if (APE_SOCKET_ISSECURE(socket)) {
+#ifndef APE_DISABLE_SSL
             ERR_clear_error();
 
             nread = ape_ssl_read(socket->SSL.ssl,
@@ -1451,6 +1484,7 @@ int ape_socket_read(ape_socket *socket) {
                 }
             }
             socket->data_in.used += ape_max(nread, 0);
+#endif
         } else {
         socket_reread:
             nread =

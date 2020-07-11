@@ -1,20 +1,22 @@
 #include "ape_ssl.h"
 
+#include <stdlib.h>
+
+#include "ape_log.h"
+
+#ifndef APE_DISABLE_SSL
 #include <openssl/conf.h>
 #include <openssl/engine.h>
 #include <openssl/err.h>
 #include <openssl/safestack.h>
 #include <openssl/ssl.h>
 
-#include "ape_log.h"
-
 #define CIPHER_LIST "HIGH:!ADH:!MD5"
 
 void ape_ssl_library_init() {
-    OPENSSL_init_ssl(
-        OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS |
-            OPENSSL_INIT_ADD_ALL_CIPHERS | OPENSSL_INIT_ADD_ALL_DIGESTS,
-        NULL);
+    OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ADD_ALL_CIPHERS |
+                         OPENSSL_INIT_ADD_ALL_DIGESTS,
+                     NULL);
 }
 
 void ape_ssl_library_destroy() {
@@ -67,8 +69,7 @@ ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key) {
         free(ssl);
         return NULL;
     }
-    if (SSL_CTX_use_PrivateKey_file(ssl->ctx, (key != NULL ? key : cert),
-                                    SSL_FILETYPE_PEM) == 0) {
+    if (SSL_CTX_use_PrivateKey_file(ssl->ctx, (key != NULL ? key : cert), SSL_FILETYPE_PEM) == 0) {
         APE_ERROR("libapenetwork", "[SSL] Failed to load private key\n");
         SSL_CTX_free(ctx);
         free(ssl);
@@ -76,9 +77,7 @@ ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key) {
     }
 
     if (SSL_CTX_check_private_key(ssl->ctx) == 0) {
-        APE_ERROR(
-            "libapenetwork",
-            "[SSL] Private key does not match the certificate public key\n");
+        APE_ERROR("libapenetwork", "[SSL] Private key does not match the certificate public key\n");
         SSL_CTX_free(ctx);
         free(ssl);
         return NULL;
@@ -179,3 +178,32 @@ void ape_ssl_destroy(ape_ssl_t *ssl) {
 
     free(ssl);
 }
+#else
+void ape_ssl_library_init() {}
+
+void ape_ssl_library_destroy() {}
+
+ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key) {
+    return NULL;
+}
+
+ape_ssl_t *ape_ssl_init_global_client_ctx() {
+    return NULL;
+}
+
+ape_ssl_t *ape_ssl_init_con(ape_ssl_t *parent, int fd, int accept) {
+    return NULL;
+}
+
+int ape_ssl_read(ape_ssl_t *ssl, void *buf, int num) {
+    return 0;
+}
+
+int ape_ssl_write(ape_ssl_t *ssl, void *buf, int num) {
+    return 0;
+}
+
+void ape_ssl_shutdown(ape_ssl_t *ssl) {}
+
+void ape_ssl_destroy(ape_ssl_t *ssl) {}
+#endif

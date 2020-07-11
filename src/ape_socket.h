@@ -180,6 +180,7 @@ struct _ape_socket {
         uint8_t issecure;
     } SSL;
 
+    char *remote_host;
     uint16_t remote_port;
     uint16_t local_port;
     size_t max_buffer_memory_mb;
@@ -218,7 +219,8 @@ int APE_socket_setTimeout(ape_socket *socket, sockopt_t secs);
 int APE_socket_listen(ape_socket *socket, uint16_t port, const char *local_ip,
                       int defer_accept, int reuse_port);
 int APE_socket_connect(ape_socket *socket, uint16_t port,
-                       const char *remote_ip_host, uint16_t localport);
+                       const char *remote_ip_host, uint16_t localport,
+                       const char *hostname_sni);
 int APE_socket_write(ape_socket *socket, void *data, size_t len,
                      ape_socket_data_autorelease data_type);
 int APE_socket_writev(ape_socket *socket, const struct iovec *iov, int iovcnt);

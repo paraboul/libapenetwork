@@ -49,7 +49,8 @@ struct _ape_timer_async_t {
 #else
 #include <time.h>
 
-#ifdef __WIN32
+#if defined(__WIN32) && 0
+
 LARGE_INTEGER
 getFILETIMEoffset() {
     SYSTEMTIME s;
@@ -230,8 +231,9 @@ static void process_async(ape_timers *timers) {
         ape_timer_async_t *ctmp = cur->next;
 
         cur->callback(cur->arg);
-        cur->clearfunc(cur->arg);
-
+        if (cur->clearfunc) {
+            cur->clearfunc(cur->arg);
+        }
         free(cur);
         cur = ctmp;
     }
