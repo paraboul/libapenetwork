@@ -12,11 +12,10 @@
 #else
 #include "port\windows.h"
 #endif
-#include <time.h>
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
-
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #include "ape_socket.h"
 
@@ -25,13 +24,13 @@
 #define MIN_TIMEOUT_MS 1
 
 enum {
-    kWatchForRead_Event  = 1 << 0,
+    kWatchForRead_Event = 1 << 0,
     kWatchForWrite_Event = 1 << 1,
     kWatchForError_Event = 1 << 2,
 
-    kReadyForRead_Event  = 1 << 3,
+    kReadyForRead_Event = 1 << 3,
     kReadyForWrite_Event = 1 << 4,
-    kIsReady_Event       = (kReadyForRead_Event | kReadyForWrite_Event)
+    kIsReady_Event = (kReadyForRead_Event | kReadyForWrite_Event)
 };
 
 typedef struct select_fdinfo_t {
@@ -41,8 +40,7 @@ typedef struct select_fdinfo_t {
 } select_fdinfo_t;
 
 static int event_select_add(struct _fdevent *ev, ape_event_descriptor *evd,
-                            int bitadd)
-{
+                            int bitadd) {
     int fd = evd->fd;
 
     if (fd < 0 || fd > FD_SETSIZE) {
@@ -51,9 +49,9 @@ static int event_select_add(struct _fdevent *ev, ape_event_descriptor *evd,
     }
 
     select_fdinfo_t *fdinfo = malloc(sizeof(select_fdinfo_t));
-    fdinfo->fd              = fd;
-    fdinfo->ptr             = evd;
-    fdinfo->watchfor        = 0;
+    fdinfo->fd = fd;
+    fdinfo->ptr = evd;
+    fdinfo->watchfor = 0;
 
     if (bitadd & EVENT_READ) {
         fdinfo->watchfor |= kWatchForRead_Event;
@@ -70,22 +68,21 @@ static int event_select_add(struct _fdevent *ev, ape_event_descriptor *evd,
     return 1;
 }
 
-static int event_select_del(struct _fdevent *ev, int fd)
-{
+static int event_select_del(struct _fdevent *ev, int fd) {
     hashtbl_erase64(ev->fdhash, fd);
 
     return 1;
 }
 
 static int event_select_mod(struct _fdevent *ev, ape_event_descriptor *evd,
-                            int bitadd)
-{
+                            int bitadd) {
     select_fdinfo_t *fdinfo;
 
     fdinfo = hashtbl_seek64(ev->fdhash, evd->fd);
 
     if (!fdinfo) {
-        APE_ERROR("libapenetwork", "[Event] event_select_mod() : failed to find current fd\n");
+        APE_ERROR("libapenetwork",
+                  "[Event] event_select_mod() : failed to find current fd\n");
         return 0;
     }
 
@@ -102,8 +99,7 @@ static int event_select_mod(struct _fdevent *ev, ape_event_descriptor *evd,
     return 1;
 }
 
-static int event_select_poll(struct _fdevent *ev, int timeout_ms)
-{
+static int event_select_poll(struct _fdevent *ev, int timeout_ms) {
     ape_htable_item_t *item;
     struct timeval tv;
     int fd, i, numfds;
@@ -114,7 +110,7 @@ static int event_select_poll(struct _fdevent *ev, int timeout_ms)
         timeout_ms = MIN_TIMEOUT_MS;
     }
 
-    tv.tv_sec  = timeout_ms / 1000;
+    tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;
 
     FD_ZERO(&rfds);
@@ -148,8 +144,9 @@ static int event_select_poll(struct _fdevent *ev, int timeout_ms)
     }
     switch (numfds) {
         case -1:
-            APE_ERROR("libapenetwork", "[Event] Error calling select: %s, %d, %d, %d\n",
-                    strerror(SOCKERRNO), maxfd, numfds, SOCKERRNO);
+            APE_ERROR("libapenetwork",
+                      "[Event] Error calling select: %s, %d, %d, %d\n",
+                      strerror(SOCKERRNO), maxfd, numfds, SOCKERRNO);
             exit(1);
         case 0:
             return numfds;
@@ -163,7 +160,8 @@ static int event_select_poll(struct _fdevent *ev, int timeout_ms)
             fdinfo = hashtbl_seek64(ev->fdhash, fd);
             if (!fdinfo) {
                 APE_ERROR("libapenetwork",
-                    "[Event] assert failed, select() returned an unknow fd (read)\n");
+                          "[Event] assert failed, select() returned an unknow "
+                          "fd (read)\n");
                 continue;
             }
 
@@ -174,7 +172,8 @@ static int event_select_poll(struct _fdevent *ev, int timeout_ms)
             if (!fdinfo) {
                 fdinfo = hashtbl_seek64(ev->fdhash, fd);
                 if (!fdinfo) {
-                    APE_ERROR("libapenetwork",
+                    APE_ERROR(
+                        "libapenetwork",
                         "[Event] assert failed, select() returned an unknow fd "
                         "(write)\n");
                     continue;
@@ -194,13 +193,11 @@ static int event_select_poll(struct _fdevent *ev, int timeout_ms)
     return i;
 }
 
-static ape_event_descriptor *event_select_get_evd(struct _fdevent *ev, int i)
-{
+static ape_event_descriptor *event_select_get_evd(struct _fdevent *ev, int i) {
     return (ape_event_descriptor *)ev->events[i]->ptr;
 }
 
-static int event_select_revent(struct _fdevent *ev, int i)
-{
+static int event_select_revent(struct _fdevent *ev, int i) {
     select_fdinfo_t *fdinfo = ev->events[i];
 
     int bitret = 0;
@@ -218,36 +215,29 @@ static int event_select_revent(struct _fdevent *ev, int i)
     return bitret;
 }
 
-
-static int event_select_reload(struct _fdevent *ev)
-{
+static int event_select_reload(struct _fdevent *ev) {
     /* Do nothing (?) */
 
     return 1;
 }
 
-static void event_select_setsize(struct _fdevent *ev, int size)
-{
+static void event_select_setsize(struct _fdevent *ev, int size) {
     ev->basemem = FD_SETSIZE;
     if (size > FD_SETSIZE) {
         APE_ERROR("libapenetwork",
-            "[Socket] event_select_setsize requested a size > FD_SETSIZE "
-            "(%d > %d)\n",
-            size, FD_SETSIZE);
+                  "[Socket] event_select_setsize requested a size > FD_SETSIZE "
+                  "(%d > %d)\n",
+                  size, FD_SETSIZE);
     }
     /* Do nothing */
 }
 
-
-static void event_select_clean_fd(ape_htable_item_t *item)
-{
+static void event_select_clean_fd(ape_htable_item_t *item) {
     /* release select_fdinfo_t */
     free(item->content.addrs);
 }
 
-
-int event_select_init(struct _fdevent *ev)
-{
+int event_select_init(struct _fdevent *ev) {
     ev->basemem = FD_SETSIZE;
 
     ev->events = malloc(sizeof(*ev->events) * (ev->basemem));
@@ -255,24 +245,23 @@ int event_select_init(struct _fdevent *ev)
     ev->fdhash = hashtbl_init(APE_HASH_INT);
     hashtbl_set_cleaner(ev->fdhash, event_select_clean_fd);
 
-    ev->add             = event_select_add;
-    ev->del             = event_select_del;
-    ev->poll            = event_select_poll;
+    ev->add = event_select_add;
+    ev->del = event_select_del;
+    ev->poll = event_select_poll;
     ev->get_current_evd = event_select_get_evd;
-    ev->revent          = event_select_revent;
-    ev->reload          = event_select_reload;
-    ev->setsize         = event_select_setsize;
-    ev->mod             = event_select_mod;
+    ev->revent = event_select_revent;
+    ev->reload = event_select_reload;
+    ev->setsize = event_select_setsize;
+    ev->mod = event_select_mod;
 
-    APE_INFO("libapenetwork", "[Event] select() started with %i slots\n", ev->basemem);
+    APE_INFO("libapenetwork", "[Event] select() started with %i slots\n",
+             ev->basemem);
 
     return 1;
 }
 
 #else
-int event_select_init(struct _fdevent *ev)
-{
+int event_select_init(struct _fdevent *ev) {
     return 0;
 }
 #endif
-

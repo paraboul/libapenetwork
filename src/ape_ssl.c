@@ -1,26 +1,23 @@
 #include "ape_ssl.h"
-#include "ape_log.h"
 
-
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 #include <openssl/conf.h>
 #include <openssl/engine.h>
+#include <openssl/err.h>
 #include <openssl/safestack.h>
+#include <openssl/ssl.h>
+
+#include "ape_log.h"
 
 #define CIPHER_LIST "HIGH:!ADH:!MD5"
 
-void ape_ssl_library_init()
-{
-     OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS
-                          | OPENSSL_INIT_LOAD_CRYPTO_STRINGS
-                          | OPENSSL_INIT_ADD_ALL_CIPHERS
-                          | OPENSSL_INIT_ADD_ALL_DIGESTS,
-                      NULL);
+void ape_ssl_library_init() {
+    OPENSSL_init_ssl(
+        OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS |
+            OPENSSL_INIT_ADD_ALL_CIPHERS | OPENSSL_INIT_ADD_ALL_DIGESTS,
+        NULL);
 }
 
-void ape_ssl_library_destroy()
-{
+void ape_ssl_library_destroy() {
     return;
     FIPS_mode_set(0);
     ENGINE_cleanup();
@@ -33,21 +30,18 @@ void ape_ssl_library_destroy()
     ERR_free_strings();
 }
 
-static void ape_ssl_info_callback(const SSL *s, int where, int ret)
-{
-}
+static void ape_ssl_info_callback(const SSL *s, int where, int ret) {}
 
-ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key)
-{
+ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key) {
     ape_ssl_t *ssl = NULL;
-    SSL_CTX *ctx   = SSL_CTX_new(SSLv23_server_method());
+    SSL_CTX *ctx = SSL_CTX_new(SSLv23_server_method());
 
     if (ctx == NULL) {
         APE_ERROR("libapenetwork", "[SSL] Failed to init SSL ctx\n");
         return NULL;
     }
 
-    ssl      = malloc(sizeof(*ssl));
+    ssl = malloc(sizeof(*ssl));
     ssl->ctx = ctx;
     ssl->con = NULL;
     SSL_CTX_set_info_callback(ssl->ctx, ape_ssl_info_callback);
@@ -74,8 +68,7 @@ ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key)
         return NULL;
     }
     if (SSL_CTX_use_PrivateKey_file(ssl->ctx, (key != NULL ? key : cert),
-                                    SSL_FILETYPE_PEM)
-        == 0) {
+                                    SSL_FILETYPE_PEM) == 0) {
         APE_ERROR("libapenetwork", "[SSL] Failed to load private key\n");
         SSL_CTX_free(ctx);
         free(ssl);
@@ -83,7 +76,9 @@ ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key)
     }
 
     if (SSL_CTX_check_private_key(ssl->ctx) == 0) {
-        APE_ERROR("libapenetwork", "[SSL] Private key does not match the certificate public key\n");
+        APE_ERROR(
+            "libapenetwork",
+            "[SSL] Private key does not match the certificate public key\n");
         SSL_CTX_free(ctx);
         free(ssl);
         return NULL;
@@ -94,12 +89,11 @@ ape_ssl_t *ape_ssl_init_ctx(const char *cert, const char *key)
     return ssl;
 }
 
-ape_ssl_t *ape_ssl_init_global_client_ctx()
-{
+ape_ssl_t *ape_ssl_init_global_client_ctx() {
     ape_ssl_t *ssl = NULL;
-    SSL_CTX *ctx   = SSL_CTX_new(SSLv23_client_method());
+    SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
 
-    ssl      = malloc(sizeof(*ssl));
+    ssl = malloc(sizeof(*ssl));
     ssl->ctx = ctx;
     ssl->con = NULL;
 
@@ -120,13 +114,12 @@ ape_ssl_t *ape_ssl_init_global_client_ctx()
     return ssl;
 }
 
-ape_ssl_t *ape_ssl_init_con(ape_ssl_t *parent, int fd, int accept)
-{
+ape_ssl_t *ape_ssl_init_con(ape_ssl_t *parent, int fd, int accept) {
     if (parent == NULL) {
         return NULL;
     }
     ape_ssl_t *ssl = NULL;
-    SSL_CTX *ctx   = parent->ctx;
+    SSL_CTX *ctx = parent->ctx;
 
     SSL *con = SSL_new(ctx);
 
@@ -148,23 +141,21 @@ ape_ssl_t *ape_ssl_init_con(ape_ssl_t *parent, int fd, int accept)
 
     // SSL_accept(con);
 
-    ssl      = malloc(sizeof(*ssl));
+    ssl = malloc(sizeof(*ssl));
     ssl->ctx = NULL;
     ssl->con = con;
 
     return ssl;
 }
 
-int ape_ssl_read(ape_ssl_t *ssl, void *buf, int num)
-{
+int ape_ssl_read(ape_ssl_t *ssl, void *buf, int num) {
     if (ssl == NULL || ssl->con == NULL) {
         return 0;
     }
     return SSL_read(ssl->con, buf, num);
 }
 
-int ape_ssl_write(ape_ssl_t *ssl, void *buf, int num)
-{
+int ape_ssl_write(ape_ssl_t *ssl, void *buf, int num) {
     if (ssl == NULL || ssl->con == NULL) {
         APE_ERROR("libapenetwork", "[SSL] Can not write : no ssl ctx\n");
         return 0;
@@ -172,8 +163,7 @@ int ape_ssl_write(ape_ssl_t *ssl, void *buf, int num)
     return SSL_write(ssl->con, buf, num);
 }
 
-void ape_ssl_shutdown(ape_ssl_t *ssl)
-{
+void ape_ssl_shutdown(ape_ssl_t *ssl) {
     if (ssl == NULL || ssl->con == NULL) {
         APE_ERROR("libapenetwork", "[SSL] Can not read : no ssl ctx\n");
         return;
@@ -181,8 +171,7 @@ void ape_ssl_shutdown(ape_ssl_t *ssl)
     SSL_shutdown(ssl->con);
 }
 
-void ape_ssl_destroy(ape_ssl_t *ssl)
-{
+void ape_ssl_destroy(ape_ssl_t *ssl) {
     if (ssl == NULL) return;
 
     if (ssl->ctx != NULL) SSL_CTX_free(ssl->ctx);

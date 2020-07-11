@@ -23,8 +23,9 @@
 #endif
 
 #ifdef _WIN32
-#include "port/windows.h"
 #include <winsock2.h>
+
+#include "port/windows.h"
 #else
 #include "port/POSIX.h"
 #endif
@@ -45,12 +46,10 @@
 typedef struct _ape_global ape_global;
 
 #include "ape_events.h"
-#include "ape_timers_next.h"
-
-#include "ape_ssl.h"
-
 #include "ape_hash.h"
 #include "ape_log.h"
+#include "ape_ssl.h"
+#include "ape_timers_next.h"
 
 struct _ape_global {
     void *ctx; /* public */
@@ -79,4 +78,3 @@ struct _ape_global {
 };
 
 #endif
-
